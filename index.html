@@ -1,0 +1,1682 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACE TRACKER - Tennis Ball Speed Radar</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Custom Tailwind Config -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            court: {
+              dark: '#082115',
+              green: '#0f3a24',
+              line: '#ffffff',
+              neon: '#d4fc34',
+              neonHover: '#c1eb27',
+              panel: 'rgba(15, 58, 36, 0.4)',
+            }
+          },
+          boxShadow: {
+            'neon': '0 0 15px rgba(212, 252, 52, 0.4)',
+            'neon-lg': '0 0 25px rgba(212, 252, 52, 0.6)',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #082115;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(15, 58, 36, 0.3) 0%, transparent 50%),
+        radial-gradient(circle at 90% 80%, rgba(212, 252, 52, 0.05) 0%, transparent 50%);
+    }
+    .font-digital {
+      font-family: 'Orbitron', monospace;
+    }
+    /* Glassmorphism utility */
+    .glass-panel {
+      background: rgba(15, 58, 36, 0.25);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-panel-neon {
+      background: rgba(15, 58, 36, 0.35);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(212, 252, 52, 0.2);
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #082115;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #0f3a24;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #d4fc34;
+    }
+  </style>
+</head>
+<body class="text-gray-100 min-h-screen flex flex-col">
+
+  <!-- Navigation / Header -->
+  <header class="border-b border-court-green/30 bg-court-dark/80 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <!-- SVG Tennis ball icon -->
+        <svg class="w-8 h-8 text-court-neon animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" stroke-dasharray="32 10" />
+          <path d="M6 12A6 6 0 0 1 18 12" />
+          <path d="M12 6A6 6 0 0 0 12 18" />
+        </svg>
+        <div>
+          <span class="text-xl font-bold tracking-wider text-court-neon font-digital">ACE TRACKER</span>
+          <span class="text-xs block text-gray-400 -mt-1">Premium Tennis Speed Radar</span>
+        </div>
+      </div>
+      <div class="flex items-center space-x-4">
+        <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-court-neon/10 text-court-neon border border-court-neon/20 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-court-neon animate-ping"></span>
+          REAL-TIME ENGINE V2.0
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Dashboard -->
+  <main class="flex-grow max-w-7xl w-full mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+    
+    <!-- Left Column: Video screen & Tracking canvas (Span 2) -->
+    <div class="lg:col-span-2 flex flex-col space-y-6">
+      
+      <!-- Video Frame container -->
+      <div class="glass-panel rounded-2xl overflow-hidden relative shadow-2xl flex flex-col">
+        <div class="p-4 border-b border-court-green/30 flex items-center justify-between bg-court-green/20">
+          <div class="flex items-center space-x-2">
+            <span class="w-3 h-3 rounded-full bg-[#ef4444] animate-pulse"></span>
+            <h2 class="font-bold text-sm tracking-wider uppercase">비디오 분석 및 트래킹 피드</h2>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span id="sourceBadge" class="text-xs bg-court-green px-2 py-1 rounded text-gray-300">대기 중</span>
+            <span id="fpsDisplay" class="text-xs font-mono bg-black/40 px-2 py-1 rounded text-court-neon">0 FPS</span>
+          </div>
+        </div>
+
+        <!-- Video and Canvas Container -->
+        <div class="relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden" id="videoWrapper">
+          <video id="videoElement" class="hidden" playsinline muted loop></video>
+          <canvas id="trackingCanvas" class="absolute top-0 left-0 w-full h-full object-contain cursor-crosshair"></canvas>
+          
+          <!-- Calibration Info Overlay -->
+          <div id="calibrationOverlay" class="absolute top-4 left-4 bg-black/75 px-3 py-2 rounded-lg border border-court-neon/30 text-xs space-y-1 pointer-events-none hidden max-w-xs transition-opacity duration-300">
+            <div class="font-bold text-court-neon flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+              기준선 보정 모드
+            </div>
+            <p class="text-gray-300">화면에서 드래그하여 기준선(예: 네트 높이 0.914m)을 그리고 오른쪽에 실제 길이를 입력하십시오.</p>
+          </div>
+
+          <!-- Color Select Prompt Overlay -->
+          <div id="colorSelectPrompt" class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-court-neon text-court-dark px-4 py-2 rounded-full text-xs font-bold shadow-neon pointer-events-none hidden flex items-center gap-2">
+            <svg class="w-4 h-4 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/></svg>
+            화면에서 추적할 테니스공의 색상을 클릭하십시오.
+          </div>
+
+          <!-- Splash / Loader Screen -->
+          <div id="splashScreen" class="absolute inset-0 bg-court-dark/95 flex flex-col items-center justify-center p-6 text-center z-10 transition-opacity duration-500">
+            <div class="w-16 h-16 mb-4 rounded-full bg-court-neon/10 border border-court-neon flex items-center justify-center">
+              <svg class="w-8 h-8 text-court-neon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h3 class="text-lg font-bold text-court-neon mb-1">테니스공 스피드 측정 엔진</h3>
+            <p class="text-sm text-gray-400 max-w-sm mb-6">스마트 기기의 카메라 또는 촬영한 서브 영상을 분석하여 실시간 테니스공 속도를 정확하게 측정합니다.</p>
+            <div class="flex flex-wrap justify-center gap-3">
+              <button onclick="triggerCameraInput()" class="bg-court-neon hover:bg-court-neonHover text-court-dark font-semibold px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 transition shadow-neon">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                카메라 연결하기
+              </button>
+              <button onclick="document.getElementById('videoFileInput').click()" class="bg-court-green hover:bg-court-green/80 text-white font-semibold px-4 py-2.5 rounded-lg text-sm flex items-center gap-2 transition border border-court-neon/30">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                동영상 파일 업로드
+              </button>
+              <input type="file" id="videoFileInput" accept="video/*" class="hidden" onchange="loadUploadedVideo(event)">
+            </div>
+          </div>
+        </div>
+
+        <!-- Video Timeline & Control Bar -->
+        <div class="p-4 bg-court-dark/95 border-t border-court-green/30 flex flex-wrap items-center justify-between gap-4">
+          <div class="flex items-center space-x-2">
+            <button id="playPauseBtn" onclick="togglePlay()" class="p-2.5 rounded-lg bg-court-green text-white hover:bg-court-green/80 transition disabled:opacity-50" disabled>
+              <svg class="w-5 h-5" id="playIcon" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              <svg class="w-5 h-5 hidden" id="pauseIcon" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            </button>
+            <button onclick="resetTracking()" class="p-2.5 rounded-lg bg-court-green text-white hover:bg-court-green/80 transition disabled:opacity-50" id="resetTrackBtn" disabled title="트래킹 및 궤적 리셋">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H12v3"/></svg>
+            </button>
+            <button onclick="toggleOverlay()" class="px-3 py-2 rounded-lg bg-court-green text-white hover:bg-court-green/80 text-xs transition disabled:opacity-50 flex items-center gap-1.5" id="toggleOverlayBtn" disabled>
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              오버레이
+            </button>
+          </div>
+
+          <!-- Video Playback speed control (for slow motion videos) -->
+          <div class="flex items-center space-x-2 text-xs">
+            <span class="text-gray-400">재생 속도:</span>
+            <select id="playbackRate" onchange="setPlaybackRate(this.value)" class="bg-court-green text-white rounded px-2 py-1 border border-court-green/50 outline-none cursor-pointer">
+              <option value="0.25">0.25x (초고속 슬로우)</option>
+              <option value="0.5">0.50x (슬로우)</option>
+              <option value="1.0" selected>1.00x (일반 속도)</option>
+            </select>
+          </div>
+
+          <!-- Media selector -->
+          <div class="flex items-center space-x-2">
+            <select id="cameraSelect" onchange="switchCamera(this.value)" class="hidden bg-court-green text-white rounded px-2.5 py-1.5 border border-court-green/50 outline-none text-xs max-w-[150px] md:max-w-xs cursor-pointer"></select>
+            <button onclick="document.getElementById('videoFileInput').click()" class="bg-court-green/40 hover:bg-court-green text-white px-3 py-1.5 rounded-lg text-xs transition border border-court-green/60 flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+              비디오 변경
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced Tracking Configuration (Tabs) -->
+      <div class="glass-panel rounded-2xl p-6 shadow-xl">
+        <h3 class="font-bold text-sm tracking-wider uppercase mb-4 border-b border-court-green/30 pb-2 text-court-neon flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          고급 분석 및 트래킹 필터 설정
+        </h3>
+
+        <!-- Tab Buttons -->
+        <div class="flex border-b border-court-green/30 mb-4">
+          <button onclick="switchTab('tab-color')" id="btn-tab-color" class="py-2 px-4 border-b-2 border-court-neon text-court-neon font-semibold text-xs uppercase tracking-wider transition">HSV 색상 추적</button>
+          <button onclick="switchTab('tab-noise')" id="btn-tab-noise" class="py-2 px-4 border-b-2 border-transparent text-gray-400 font-semibold text-xs uppercase tracking-wider transition">노이즈 제거 필터</button>
+          <button onclick="switchTab('tab-calib')" id="btn-tab-calib" class="py-2 px-4 border-b-2 border-transparent text-gray-400 font-semibold text-xs uppercase tracking-wider transition">거리 보정 (Calibration)</button>
+        </div>
+
+        <!-- Tab 1: HSV Color Settings -->
+        <div id="tab-color" class="space-y-4 tab-content">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <label class="text-xs text-gray-400 font-semibold uppercase">추적할 테니스공 HSV 색상</label>
+                <button onclick="enableColorPicker()" class="text-xs text-court-neon bg-court-neon/10 border border-court-neon/20 px-2 py-1 rounded hover:bg-court-neon/20 transition flex items-center gap-1">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/></svg>
+                  화면에서 색상 선택
+                </button>
+              </div>
+              <div class="flex items-center space-x-4 bg-court-dark/50 p-3 rounded-lg border border-court-green/30">
+                <div id="hsvColorPreview" class="w-12 h-12 rounded-lg border border-white/20 shadow" style="background-color: #d4fc34;"></div>
+                <div class="text-xs font-mono">
+                  <div>Hue: <span id="val-hue">68</span>°</div>
+                  <div>Saturation: <span id="val-sat">75</span>%</div>
+                  <div>Value: <span id="val-val">88</span>%</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Predefined Targets -->
+            <div>
+              <label class="text-xs text-gray-400 font-semibold uppercase block mb-2">기본 색상 프리셋</label>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="setPresetHSV(68, 75, 88, 15, 25, 25)" class="text-left p-2 rounded bg-court-green/40 hover:bg-court-green/60 text-xs border border-court-green/50 flex items-center gap-2">
+                  <span class="w-3.5 h-3.5 rounded-full bg-[#d4fc34] block"></span>
+                  <span>형광 옐로우/그린 (기본)</span>
+                </button>
+                <button onclick="setPresetHSV(55, 65, 80, 15, 30, 30)" class="text-left p-2 rounded bg-court-green/40 hover:bg-court-green/60 text-xs border border-court-green/50 flex items-center gap-2">
+                  <span class="w-3.5 h-3.5 rounded-full bg-[#c8e627] block"></span>
+                  <span>야외 밝은 햇빛</span>
+                </button>
+                <button onclick="setPresetHSV(72, 50, 70, 15, 30, 35)" class="text-left p-2 rounded bg-court-green/40 hover:bg-court-green/60 text-xs border border-court-green/50 flex items-center gap-2">
+                  <span class="w-3.5 h-3.5 rounded-full bg-[#9fba24] block"></span>
+                  <span>실내/그늘진 곳</span>
+                </button>
+                <button onclick="setPresetHSV(35, 75, 85, 10, 25, 25)" class="text-left p-2 rounded bg-court-green/40 hover:bg-court-green/60 text-xs border border-court-green/50 flex items-center gap-2">
+                  <span class="w-3.5 h-3.5 rounded-full bg-[#ffaa00] block"></span>
+                  <span>오렌지 연습공</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Color Sliders -->
+          <div class="space-y-3 pt-2">
+            <div>
+              <div class="flex justify-between text-xs text-gray-400 mb-1">
+                <span>색상 범위 (Hue Tolerance): <span id="lbl-tol-h">15</span>°</span>
+              </div>
+              <input type="range" id="range-tol-h" min="5" max="50" value="15" oninput="updateHSVParameters()" class="w-full accent-court-neon bg-court-dark rounded-lg h-2 cursor-pointer">
+            </div>
+            <div>
+              <div class="flex justify-between text-xs text-gray-400 mb-1">
+                <span>채도 최소값 (Min Saturation): <span id="lbl-min-s">45</span>%</span>
+              </div>
+              <input type="range" id="range-min-s" min="10" max="90" value="45" oninput="updateHSVParameters()" class="w-full accent-court-neon bg-court-dark rounded-lg h-2 cursor-pointer">
+            </div>
+            <div>
+              <div class="flex justify-between text-xs text-gray-400 mb-1">
+                <span>명도 최소값 (Min Value): <span id="lbl-min-v">50</span>%</span>
+              </div>
+              <input type="range" id="range-min-v" min="10" max="90" value="50" oninput="updateHSVParameters()" class="w-full accent-court-neon bg-court-dark rounded-lg h-2 cursor-pointer">
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Noise Filtering Settings -->
+        <div id="tab-noise" class="space-y-4 tab-content hidden">
+          <p class="text-xs text-gray-400">카메라 모션 블러나 테니스 코트 배경의 격자/선 등으로 인한 오작동을 필터링하기 위해 크기 및 밀도 기준을 설정합니다.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="text-xs text-gray-400 font-semibold uppercase block mb-1">최소 감지 픽셀 면적 (Min Area)</label>
+              <div class="flex items-center space-x-2">
+                <input type="range" id="range-min-area" min="3" max="50" value="5" oninput="updateNoiseParameters()" class="w-full accent-court-neon bg-court-dark rounded-lg h-2 cursor-pointer">
+                <span id="lbl-min-area" class="text-xs font-mono bg-court-dark px-2 py-1 rounded w-12 text-center">5px</span>
+              </div>
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 font-semibold uppercase block mb-1">최대 감지 픽셀 면적 (Max Area)</label>
+              <div class="flex items-center space-x-2">
+                <input type="range" id="range-max-area" min="200" max="3000" step="50" value="800" oninput="updateNoiseParameters()" class="w-full accent-court-neon bg-court-dark rounded-lg h-2 cursor-pointer">
+                <span id="lbl-max-area" class="text-xs font-mono bg-court-dark px-2 py-1 rounded w-16 text-center">800px</span>
+              </div>
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 font-semibold uppercase block mb-1">원형 밀도 기준 (Shape Density)</label>
+              <div class="flex items-center space-x-2">
+                <input type="range" id="range-density" min="0.2" max="0.8" step="0.05" value="0.35" oninput="updateNoiseParameters()" class="w-full accent-court-neon bg-court-dark rounded-lg h-2 cursor-pointer">
+                <span id="lbl-density" class="text-xs font-mono bg-court-dark px-2 py-1 rounded w-12 text-center">0.35</span>
+              </div>
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 font-semibold uppercase block mb-1">경로 평활화 강도 (Kalman Filter)</label>
+              <div class="flex items-center space-x-2">
+                <input type="range" id="range-kalman" min="0.1" max="1.0" step="0.05" value="0.65" oninput="updateNoiseParameters()" class="w-full accent-court-neon bg-court-dark rounded-lg h-2 cursor-pointer">
+                <span id="lbl-kalman" class="text-xs font-mono bg-court-dark px-2 py-1 rounded w-12 text-center">0.65</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Calibration Settings -->
+        <div id="tab-calib" class="space-y-4 tab-content hidden">
+          <div class="space-y-4">
+            <div class="flex flex-col space-y-2">
+              <label class="text-xs text-gray-400 font-semibold uppercase">측정 보정 방식</label>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <!-- Method A Card -->
+                <div id="method-ball" onclick="setCalibrationMethod('ball')" class="p-3 rounded-lg bg-court-green/20 border-2 border-court-neon cursor-pointer hover:bg-court-green/30 transition">
+                  <div class="flex items-center space-x-2 mb-1">
+                    <input type="radio" name="calibMethod" value="ball" checked class="accent-court-neon">
+                    <span class="text-xs font-bold text-court-neon">A: 테니스공 크기 기준 (자동 3D)</span>
+                  </div>
+                  <p class="text-[11px] text-gray-400 leading-relaxed">테니스공의 공식 표준 지름(6.7cm)을 화면상 픽셀 지름과 실시간으로 비교합니다. 깊이감(원근)에 따라 스케일이 자동 조정됩니다.</p>
+                </div>
+
+                <!-- Method B Card -->
+                <div id="method-line" onclick="setCalibrationMethod('line')" class="p-3 rounded-lg bg-court-green/10 border-2 border-transparent cursor-pointer hover:bg-court-green/20 transition">
+                  <div class="flex items-center space-x-2 mb-1">
+                    <input type="radio" name="calibMethod" value="line" class="accent-court-neon">
+                    <span class="text-xs font-bold text-gray-300">B: 화면 기준선 기준 (수동 2D)</span>
+                  </div>
+                  <p class="text-[11px] text-gray-400 leading-relaxed">화면에 특정 길이의 사물(예: 네트 높이 0.914m, 하프라인)을 드래그하여 고정된 거리 비율(m/pixel)을 직접 환산합니다.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Parameters corresponding to methods -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-court-dark/40 p-4 rounded-lg border border-court-green/20">
+              <div id="param-ball-group">
+                <label class="text-xs text-gray-400 font-semibold uppercase block mb-1">공의 지름 (Ball Diameter)</label>
+                <div class="flex items-center space-x-2">
+                  <input type="number" id="ballSizeMeters" step="0.001" value="0.067" onchange="updateCalibParams()" class="bg-court-dark text-white rounded px-2.5 py-1.5 border border-court-green text-xs w-28 outline-none focus:border-court-neon font-mono">
+                  <span class="text-xs text-gray-400">m (표준: 0.067m)</span>
+                </div>
+              </div>
+
+              <div id="param-line-group" class="opacity-50 pointer-events-none">
+                <div class="flex justify-between items-center mb-1">
+                  <label class="text-xs text-gray-400 font-semibold uppercase">그려진 기준선 실제 길이</label>
+                  <button id="drawCalibLineBtn" onclick="startLineCalibration()" class="text-[10px] text-court-neon bg-court-neon/10 border border-court-neon/20 px-2 py-0.5 rounded hover:bg-court-neon/20 transition" disabled>
+                    수동 그리기 활성화
+                  </button>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <input type="number" id="calibLineLength" step="0.1" value="1.0" onchange="updateCalibParams()" class="bg-court-dark text-white rounded px-2.5 py-1.5 border border-court-green text-xs w-28 outline-none focus:border-court-neon font-mono">
+                  <span class="text-xs text-gray-400">m (현재: <span id="calibLinePxDisplay" class="font-mono">선 없음</span>)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Speedometer, Trajectory, and Statistics -->
+    <div class="flex flex-col space-y-6">
+      
+      <!-- Premium Speedometer Dial Card -->
+      <div class="glass-panel-neon rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col items-center justify-center text-center">
+        <!-- Court decorative lines -->
+        <div class="absolute inset-x-0 bottom-0 h-1 bg-court-neon opacity-80 shadow-neon"></div>
+        
+        <span class="text-xs tracking-widest text-court-neon font-bold uppercase mb-2">LATEST MEASURED SPEED</span>
+        
+        <!-- Large Speed Digital Dial -->
+        <div class="relative py-6">
+          <div class="text-8xl font-black font-digital text-court-neon tracking-wider drop-shadow-neon select-none" id="speedDisplay">
+            00
+          </div>
+          <div class="text-xs font-semibold text-gray-400 uppercase tracking-widest mt-2" id="unitDisplay">
+            km / h
+          </div>
+        </div>
+
+        <!-- Metric Switcher -->
+        <div class="flex bg-court-dark/80 rounded-lg p-0.5 border border-court-green/50 text-xs w-full max-w-[200px] mt-2 z-10">
+          <button onclick="setSpeedUnit('kmh')" id="unit-kmh" class="flex-1 py-1 rounded bg-court-neon text-court-dark font-bold transition">KM/H</button>
+          <button onclick="setSpeedUnit('mph')" id="unit-mph" class="flex-1 py-1 rounded text-gray-400 hover:text-white font-medium transition">MPH</button>
+          <button onclick="setSpeedUnit('ms')" id="unit-ms" class="flex-1 py-1 rounded text-gray-400 hover:text-white font-medium transition">M/S</button>
+        </div>
+
+        <!-- Voice & Audio Feedback -->
+        <div class="flex items-center space-x-4 mt-6 w-full justify-center border-t border-court-green/20 pt-4 text-xs">
+          <label class="flex items-center space-x-2 cursor-pointer text-gray-300">
+            <input type="checkbox" id="voiceEnable" checked class="accent-court-neon">
+            <span>스피드 음성 안내 (TTS)</span>
+          </label>
+          <label class="flex items-center space-x-2 cursor-pointer text-gray-300">
+            <input type="checkbox" id="soundEffectEnable" checked class="accent-court-neon">
+            <span>감지 비프음</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Live Track Summary / Stats Card -->
+      <div class="glass-panel rounded-2xl p-6 shadow-xl">
+        <h3 class="font-bold text-sm tracking-wider uppercase mb-4 border-b border-court-green/30 pb-2 text-court-neon">
+          세션 스태티스틱스
+        </h3>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-court-dark/40 p-3 rounded-lg border border-court-green/20">
+            <span class="text-[10px] text-gray-400 uppercase block mb-1">최대 스피드 (PEAK)</span>
+            <span class="text-2xl font-bold font-digital text-white" id="peakSpeedVal">0.0</span>
+            <span class="text-xs text-gray-400" id="peakSpeedUnit">km/h</span>
+          </div>
+          <div class="bg-court-dark/40 p-3 rounded-lg border border-court-green/20">
+            <span class="text-[10px] text-gray-400 uppercase block mb-1">총 샷 수 (SHOTS)</span>
+            <span class="text-2xl font-bold font-digital text-white" id="shotsCountVal">0</span>
+            <span class="text-xs text-gray-400">회 감지</span>
+          </div>
+        </div>
+
+        <!-- Session reset button -->
+        <button onclick="resetSessionStats()" class="w-full mt-4 bg-court-green/30 hover:bg-court-green text-white font-semibold py-2 rounded-lg text-xs transition border border-court-green/60 uppercase tracking-wider">
+          세션 통계 초기화
+        </button>
+      </div>
+
+      <!-- Real-time Trajectory / Speed Chart -->
+      <div class="glass-panel rounded-2xl p-6 shadow-xl flex flex-col">
+        <h3 class="font-bold text-sm tracking-wider uppercase mb-3 border-b border-court-green/30 pb-2 text-court-neon">
+          속도 프로파일 그래프
+        </h3>
+        <div class="relative w-full aspect-[4/3] bg-court-dark/50 rounded-lg p-2 border border-court-green/20">
+          <canvas id="speedProfileChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Shot History -->
+      <div class="glass-panel rounded-2xl p-6 shadow-xl flex-grow flex flex-col">
+        <h3 class="font-bold text-sm tracking-wider uppercase mb-3 border-b border-court-green/30 pb-2 text-court-neon">
+          최근 감지 히스토리 (TOP 5)
+        </h3>
+        <div class="overflow-x-auto flex-grow">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-gray-400 border-b border-court-green/20">
+                <th class="py-2 font-semibold">시각</th>
+                <th class="py-2 font-semibold text-right">피크 스피드</th>
+                <th class="py-2 font-semibold text-right">프레임 수</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr>
+                <td colspan="3" class="py-4 text-center text-gray-500">기록된 샷이 없습니다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+    </div>
+  </main>
+
+  <!-- Step-by-Step Interactive Guide Footer Section -->
+  <section class="max-w-7xl w-full mx-auto px-4 py-8 border-t border-court-green/30 mt-6">
+    <h3 class="text-base font-bold text-court-neon uppercase tracking-wider mb-6 flex items-center gap-2">
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      정확한 서브 및 스트로크 속도 측정을 위한 4단계 가이드
+    </h3>
+    
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+      
+      <!-- Step 1 Card -->
+      <div class="bg-court-green/10 border border-court-green/20 rounded-xl p-4 flex flex-col relative overflow-hidden">
+        <div class="absolute top-2 right-2 text-court-neon/15 font-black text-6xl font-digital select-none">1</div>
+        <h4 class="font-bold text-sm text-court-neon mb-2">카메라 앵글 및 고정</h4>
+        <p class="text-xs text-gray-400 leading-relaxed z-10">스마트폰을 코트 옆면(사이드 라인 부근)에 삼각대를 사용해 수평으로 고정합니다. 흔들림이 없어야 정확히 매핑됩니다.</p>
+        <div class="mt-4 border border-court-green/30 rounded-lg p-2 bg-court-dark/40 flex justify-center z-10">
+          <!-- Court Side Layout SVG -->
+          <svg class="w-full h-20 text-gray-400" viewBox="0 0 120 60" fill="none" stroke="currentColor" stroke-width="1">
+            <rect x="10" y="10" width="100" height="40" stroke="#0f3a24" stroke-width="2"/>
+            <line x1="60" y1="10" x2="60" y2="50" stroke="#0f3a24" stroke-width="2"/>
+            <!-- Camera position representation -->
+            <circle cx="60" cy="55" r="3" fill="#d4fc34" />
+            <path d="M57 58h6M60 55v3" />
+            <!-- Path representation -->
+            <path d="M20 25c15 0 25-5 40-10s25-5 40 5" stroke="#d4fc34" stroke-dasharray="2 2" stroke-width="1.5"/>
+            <text x="66" y="58" fill="#d4fc34" font-size="6" font-weight="bold">Camera (Side View)</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Step 2 Card -->
+      <div class="bg-court-green/10 border border-court-green/20 rounded-xl p-4 flex flex-col relative overflow-hidden">
+        <div class="absolute top-2 right-2 text-court-neon/15 font-black text-6xl font-digital select-none">2</div>
+        <h4 class="font-bold text-sm text-court-neon mb-2">볼 색상 크로마 보정</h4>
+        <p class="text-xs text-gray-400 leading-relaxed z-10">사용하는 공의 형광 노란색을 선택합니다. 비디오가 로드되면 화면 속 공을 직접 마우스나 터치로 클릭하여 정밀 보정하세요.</p>
+        <div class="mt-4 border border-court-green/30 rounded-lg p-2 bg-court-dark/40 flex items-center justify-between z-10">
+          <div class="flex items-center space-x-1.5">
+            <span class="w-3.5 h-3.5 rounded-full bg-[#d4fc34] block shadow-neon"></span>
+            <span class="text-[10px] text-gray-300 font-mono">H:68 S:75% V:88%</span>
+          </div>
+          <span class="text-[10px] text-court-neon font-bold uppercase">보정 완료</span>
+        </div>
+      </div>
+
+      <!-- Step 3 Card -->
+      <div class="bg-court-green/10 border border-court-green/20 rounded-xl p-4 flex flex-col relative overflow-hidden">
+        <div class="absolute top-2 right-2 text-court-neon/15 font-black text-6xl font-digital select-none">3</div>
+        <h4 class="font-bold text-sm text-court-neon mb-2">비교 방식(보정) 설정</h4>
+        <p class="text-xs text-gray-400 leading-relaxed z-10">공 지름 기준(표준 6.7cm) 혹은 화면 내 특정 물체의 실제 거리 기준선을 드래그하여 입력합니다. (네트 기둥 간격: 12.8m, 네트 중앙 높이: 0.914m)</p>
+        <div class="mt-4 border border-court-green/30 rounded-lg p-2 bg-court-dark/40 flex justify-center items-center z-10 min-h-[82px]">
+          <div class="text-center">
+            <div class="text-[11px] font-bold text-court-neon">A: 공 지름 자동 (3D 원근)</div>
+            <div class="text-[9px] text-gray-400">볼 픽셀 지름 ↔ 6.7cm 환산</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4 Card -->
+      <div class="bg-court-green/10 border border-court-green/20 rounded-xl p-4 flex flex-col relative overflow-hidden">
+        <div class="absolute top-2 right-2 text-court-neon/15 font-black text-6xl font-digital select-none">4</div>
+        <h4 class="font-bold text-sm text-court-neon mb-2">분석 결과 확인</h4>
+        <p class="text-xs text-gray-400 leading-relaxed z-10">비디오 재생 또는 실시간 카메라 분석을 수행합니다. 샷이 끝나면 임팩트 최고 속도가 음성(TTS)으로 선언되며 그래프에 궤적이 남습니다.</p>
+        <div class="mt-4 border border-court-green/30 rounded-lg p-2 bg-court-dark/40 flex justify-between items-center z-10">
+          <div class="text-left">
+            <div class="text-[10px] text-gray-400 uppercase">최고 속도</div>
+            <div class="text-sm font-bold font-digital text-court-neon">188 km/h</div>
+          </div>
+          <svg class="w-6 h-6 text-court-neon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="mt-auto py-6 border-t border-court-green/20 bg-court-dark text-center text-xs text-gray-500">
+    <p>© 2026 ACE TRACKER Tennis Radar. All Rights Reserved. 개발/최적화 완료.</p>
+  </footer>
+
+  <!-- Web App Tracking Script -->
+  <script>
+    // State Variables
+    let isPlaying = false;
+    let isCamera = false;
+    let cameraStream = null;
+    let trackingActive = true;
+    let animationFrameId = null;
+
+    // Elements
+    const video = document.getElementById('videoElement');
+    const canvas = document.getElementById('trackingCanvas');
+    const ctx = canvas.getContext('2d');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const resetTrackBtn = document.getElementById('resetTrackBtn');
+    const toggleOverlayBtn = document.getElementById('toggleOverlayBtn');
+    const sourceBadge = document.getElementById('sourceBadge');
+    const fpsDisplay = document.getElementById('fpsDisplay');
+    const speedDisplay = document.getElementById('speedDisplay');
+    const peakSpeedVal = document.getElementById('peakSpeedVal');
+    const shotsCountVal = document.getElementById('shotsCountVal');
+    const historyTableBody = document.getElementById('historyTableBody');
+    const splashScreen = document.getElementById('splashScreen');
+    const cameraSelect = document.getElementById('cameraSelect');
+    const playbackRateSelect = document.getElementById('playbackRate');
+    
+    // Canvas settings
+    let displayWidth = 640;
+    let displayHeight = 360;
+    
+    // Tracking & Offscreen Processing Canvas
+    const trackCanvas = document.createElement('canvas');
+    trackCanvas.width = 320; // Downsampled for fast tracking
+    trackCanvas.height = 180;
+    const trackCtx = trackCanvas.getContext('2d', { willReadFrequently: true });
+
+    // Color tracking params (Fluorescent Tennis Ball Yellow/Green)
+    let targetH = 68;
+    let targetS = 75;
+    let targetV = 88;
+    let toleranceH = 15;
+    let minSat = 45;
+    let minValue = 50;
+
+    // Noise parameters
+    let minArea = 5;       // in pixels on the downsampled grid
+    let maxArea = 800;
+    let shapeDensity = 0.35; // circular density ratio
+    let kalmanAlpha = 0.65;  // higher means less smoothing, lower means more smoothing
+
+    // Calibration settings
+    let calibMethod = 'ball'; // 'ball' or 'line'
+    let ballDiameterMeters = 0.067;
+    let calibLineLengthMeters = 1.0;
+    
+    // Line Calibration state
+    let calibLineStart = null;
+    let calibLineEnd = null;
+    let isDrawingCalibLine = false;
+    let activeDrawingMode = false; // true when user explicitly wants to draw the calibration line
+    let calibLineLengthPixels = null;
+    let metersPerPixelManual = null;
+
+    // Color picker tool state
+    let activeColorPicker = false;
+
+    // Tracking state
+    let lastTrackedPoint = null; // {x, y, t, d}
+    let consecutiveMissedFrames = 0;
+    const maxMissedFrames = 5; // maintain trajectory with interpolation for up to 5 frames
+    let currentTrajectory = []; // array of {x, y, t, d, v}
+    let trajectoryHistory = []; // list of completed trajectories
+    let totalShotsCount = 0;
+    let peakSpeedSession = 0.0;
+    let currentSpeedUnit = 'kmh'; // 'kmh', 'mph', 'ms'
+    
+    // FPS counters
+    let lastFpsUpdateTime = 0;
+    let frameCount = 0;
+
+    // Audio & Speech
+    let audioCtx = null;
+    const voiceEnable = document.getElementById('voiceEnable');
+    const soundEffectEnable = document.getElementById('soundEffectEnable');
+
+    // Chart.js
+    let speedChart = null;
+
+    // Initialize Chart
+    function initChart() {
+      const chartCtx = document.getElementById('speedProfileChart').getContext('2d');
+      speedChart = new Chart(chartCtx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: '실시간 속도',
+            data: [],
+            borderColor: '#d4fc34',
+            backgroundColor: 'rgba(212, 252, 52, 0.1)',
+            borderWidth: 2,
+            tension: 0.3,
+            fill: true,
+            pointRadius: 1,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+          },
+          scales: {
+            x: {
+              title: { display: true, text: '시간 (초)', color: '#9ca3af', font: { size: 10 } },
+              grid: { color: 'rgba(15, 58, 36, 0.2)' },
+              ticks: { color: '#9ca3af', font: { size: 9 } }
+            },
+            y: {
+              title: { display: true, text: '속도 (km/h)', color: '#9ca3af', font: { size: 10 } },
+              grid: { color: 'rgba(15, 58, 36, 0.2)' },
+              ticks: { color: '#9ca3af', font: { size: 9 } }
+            }
+          }
+        }
+      });
+    }
+
+    // Audio Beep generator
+    function playBeep(frequency = 800, duration = 0.08) {
+      if (!soundEffectEnable.checked) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {
+        console.warn('Web Audio Playback failed:', e);
+      }
+    }
+
+    // Voice announcement (TTS)
+    function announceSpeed(speedStr) {
+      if (!voiceEnable.checked) return;
+      try {
+        if (window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(speedStr);
+          utterance.lang = 'ko-KR';
+          utterance.rate = 1.1;
+          window.speechSynthesis.speak(utterance);
+        }
+      } catch (e) {
+        console.warn('TTS speech synthesis failed:', e);
+      }
+    }
+
+    // RGB to HSV Conversion
+    function rgbToHsv(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      let max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h, s, v = max;
+      let d = max - min;
+      s = max === 0 ? 0 : d / max;
+      if (max === min) {
+        h = 0;
+      } else {
+        switch (max) {
+          case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+          case g: h = (b - r) / d + 2; break;
+          case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+      }
+      return { 
+        h: Math.round(h * 360), 
+        s: Math.round(s * 100), 
+        v: Math.round(v * 100) 
+      };
+    }
+
+    // Tab switcher
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById(tabId).classList.remove('hidden');
+      
+      const tabButtons = ['btn-tab-color', 'btn-tab-noise', 'btn-tab-calib'];
+      tabButtons.forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btnId === 'btn-' + tabId) {
+          btn.classList.add('border-court-neon', 'text-court-neon');
+          btn.classList.remove('border-transparent', 'text-gray-400');
+        } else {
+          btn.classList.remove('border-court-neon', 'text-court-neon');
+          btn.classList.add('border-transparent', 'text-gray-400');
+        }
+      });
+    }
+
+    // Sliders & Params Update
+    function updateHSVParameters() {
+      toleranceH = parseInt(document.getElementById('range-tol-h').value);
+      minSat = parseInt(document.getElementById('range-min-s').value);
+      minValue = parseInt(document.getElementById('range-min-v').value);
+      
+      document.getElementById('lbl-tol-h').innerText = toleranceH;
+      document.getElementById('lbl-min-s').innerText = minSat;
+      document.getElementById('lbl-min-v').innerText = minValue;
+      
+      updateHsvColorPreview();
+    }
+
+    function updateNoiseParameters() {
+      minArea = parseInt(document.getElementById('range-min-area').value);
+      maxArea = parseInt(document.getElementById('range-max-area').value);
+      shapeDensity = parseFloat(document.getElementById('range-density').value);
+      kalmanAlpha = parseFloat(document.getElementById('range-kalman').value);
+
+      document.getElementById('lbl-min-area').innerText = minArea + 'px';
+      document.getElementById('lbl-max-area').innerText = maxArea + 'px';
+      document.getElementById('lbl-density').innerText = shapeDensity.toFixed(2);
+      document.getElementById('lbl-kalman').innerText = kalmanAlpha.toFixed(2);
+    }
+
+    function setPresetHSV(h, s, v, tolH, minS, minV) {
+      targetH = h;
+      targetS = s;
+      targetV = v;
+      toleranceH = tolH;
+      minSat = minS;
+      minValue = minV;
+
+      document.getElementById('range-tol-h').value = tolH;
+      document.getElementById('range-min-s').value = minS;
+      document.getElementById('range-min-v').value = minV;
+
+      document.getElementById('val-hue').innerText = h;
+      document.getElementById('val-sat').innerText = s;
+      document.getElementById('val-val').innerText = v;
+
+      updateHSVParameters();
+    }
+
+    function updateHsvColorPreview() {
+      const h = targetH / 360;
+      const s = targetS / 100;
+      const v = targetV / 100;
+      let r, g, b;
+      const i = Math.floor(h * 6);
+      const f = h * 6 - i;
+      const p = v * (1 - s);
+      const q = v * (1 - f * s);
+      const t = v * (1 - (1 - f) * s);
+      switch (i % 6) {
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+      }
+      const hex = '#' + [r, g, b].map(x => {
+        const str = Math.round(x * 255).toString(16);
+        return str.length === 1 ? '0' + str : str;
+      }).join('');
+      
+      document.getElementById('hsvColorPreview').style.backgroundColor = hex;
+    }
+
+    // Set Calibration Method
+    function setCalibrationMethod(method) {
+      calibMethod = method;
+      const cardBall = document.getElementById('method-ball');
+      const cardLine = document.getElementById('method-line');
+      const paramBall = document.getElementById('param-ball-group');
+      const paramLine = document.getElementById('param-line-group');
+      const drawBtn = document.getElementById('drawCalibLineBtn');
+      const overlay = document.getElementById('calibrationOverlay');
+
+      if (method === 'ball') {
+        cardBall.classList.add('border-court-neon', 'bg-court-green/20');
+        cardBall.classList.remove('border-transparent', 'bg-court-green/10');
+        cardLine.classList.remove('border-court-neon', 'bg-court-green/20');
+        cardLine.classList.add('border-transparent', 'bg-court-green/10');
+        
+        paramBall.classList.remove('opacity-50', 'pointer-events-none');
+        paramLine.classList.add('opacity-50', 'pointer-events-none');
+        
+        document.querySelector('input[name="calibMethod"][value="ball"]').checked = true;
+        drawBtn.disabled = true;
+        overlay.classList.add('hidden');
+        activeDrawingMode = false;
+      } else {
+        cardLine.classList.add('border-court-neon', 'bg-court-green/20');
+        cardLine.classList.remove('border-transparent', 'bg-court-green/10');
+        cardBall.classList.remove('border-court-neon', 'bg-court-green/20');
+        cardBall.classList.add('border-transparent', 'bg-court-green/10');
+        
+        paramLine.classList.remove('opacity-50', 'pointer-events-none');
+        paramBall.classList.add('opacity-50', 'pointer-events-none');
+        
+        document.querySelector('input[name="calibMethod"][value="line"]').checked = true;
+        drawBtn.disabled = false;
+        if (activeDrawingMode) overlay.classList.remove('hidden');
+      }
+    }
+
+    function updateCalibParams() {
+      ballDiameterMeters = parseFloat(document.getElementById('ballSizeMeters').value) || 0.067;
+      calibLineLengthMeters = parseFloat(document.getElementById('calibLineLength').value) || 1.0;
+      recalculateManualScale();
+    }
+
+    function startLineCalibration() {
+      if (calibMethod !== 'line') return;
+      activeDrawingMode = true;
+      document.getElementById('calibrationOverlay').classList.remove('hidden');
+      playBeep(440, 0.1);
+    }
+
+    // Speed unit conversions
+    function setSpeedUnit(unit) {
+      currentSpeedUnit = unit;
+      const units = ['kmh', 'mph', 'ms'];
+      units.forEach(u => {
+        const btn = document.getElementById('unit-' + u);
+        if (u === unit) {
+          btn.classList.add('bg-court-neon', 'text-court-dark', 'font-bold');
+          btn.classList.remove('text-gray-400', 'hover:text-white', 'font-medium');
+        } else {
+          btn.classList.remove('bg-court-neon', 'text-court-dark', 'font-bold');
+          btn.classList.add('text-gray-400', 'hover:text-white', 'font-medium');
+        }
+      });
+      
+      const unitLabels = { 'kmh': 'km / h', 'mph': 'm p h', 'ms': 'm / s' };
+      document.getElementById('unitDisplay').innerText = unitLabels[unit];
+      
+      updateSpeedometerDisplay(lastPeakSpeedForDisplay());
+      updateStatsAndHistory();
+    }
+
+    function lastPeakSpeedForDisplay() {
+      if (currentTrajectory.length === 0 && trajectoryHistory.length === 0) return 0;
+      if (currentTrajectory.length > 0) {
+        return Math.max(...currentTrajectory.map(p => p.v));
+      }
+      const lastTraj = trajectoryHistory[trajectoryHistory.length - 1];
+      return Math.max(...lastTraj.points.map(p => p.v));
+    }
+
+    function convertSpeed(vMps, unit) {
+      if (unit === 'kmh') return vMps * 3.6;
+      if (unit === 'mph') return vMps * 2.23694;
+      return vMps;
+    }
+
+    function formatSpeed(val) {
+      return val.toFixed(1);
+    }
+
+    function updateSpeedometerDisplay(vMps) {
+      if (vMps <= 0) {
+        speedDisplay.innerText = "00";
+        return;
+      }
+      const converted = convertSpeed(vMps, currentSpeedUnit);
+      speedDisplay.innerText = Math.round(converted);
+    }
+
+    // Media Setup: Video Upload
+    function loadUploadedVideo(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      stopActiveCamera();
+      
+      const url = URL.createObjectURL(file);
+      video.srcObject = null;
+      video.src = url;
+      
+      isCamera = false;
+      sourceBadge.innerText = "비디오 파일";
+      sourceBadge.className = "text-xs bg-indigo-600 px-2 py-1 rounded text-white font-semibold";
+      
+      video.onloadedmetadata = () => {
+        displayWidth = video.videoWidth;
+        displayHeight = video.videoHeight;
+        adjustCanvasSize();
+        
+        playPauseBtn.disabled = false;
+        resetTrackBtn.disabled = false;
+        toggleOverlayBtn.disabled = false;
+        
+        splashScreen.classList.add('opacity-0');
+        setTimeout(() => splashScreen.classList.add('hidden'), 500);
+        
+        resetTracking();
+        video.play();
+        isPlaying = true;
+        updatePlayBtnUI();
+        
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(processVideoFrame);
+      };
+    }
+
+    // Media Setup: Camera Input
+    async function triggerCameraInput() {
+      try {
+        stopActiveCamera();
+        
+        const constraints = {
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: "environment"
+          },
+          audio: false
+        };
+        
+        cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.src = "";
+        video.srcObject = cameraStream;
+        isCamera = true;
+        
+        sourceBadge.innerText = "라이브 카메라";
+        sourceBadge.className = "text-xs bg-green-600 px-2 py-1 rounded text-white font-semibold";
+
+        video.onloadedmetadata = () => {
+          displayWidth = video.videoWidth;
+          displayHeight = video.videoHeight;
+          adjustCanvasSize();
+          
+          playPauseBtn.disabled = false;
+          resetTrackBtn.disabled = false;
+          toggleOverlayBtn.disabled = false;
+          
+          enumerateCameras();
+
+          splashScreen.classList.add('opacity-0');
+          setTimeout(() => splashScreen.classList.add('hidden'), 500);
+          
+          resetTracking();
+          video.play();
+          isPlaying = true;
+          updatePlayBtnUI();
+          
+          if (animationFrameId) cancelAnimationFrame(animationFrameId);
+          animationFrameId = requestAnimationFrame(processVideoFrame);
+        };
+      } catch (err) {
+        console.error("Camera access failed:", err);
+        alert("카메라에 접근할 수 없습니다. 권한을 확인하거나 동영상을 업로드하십시오.");
+      }
+    }
+
+    async function enumerateCameras() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        
+        cameraSelect.innerHTML = "";
+        cameraSelect.classList.remove('hidden');
+        
+        videoDevices.forEach((device, index) => {
+          const option = document.createElement('option');
+          option.value = device.deviceId;
+          option.text = device.label || `카메라 ${index + 1}`;
+          cameraSelect.appendChild(option);
+        });
+      } catch (e) {
+        console.warn("Could not list video devices:", e);
+      }
+    }
+
+    async function switchCamera(deviceId) {
+      if (!isCamera) return;
+      try {
+        stopActiveCamera();
+        const constraints = {
+          video: {
+            deviceId: { exact: deviceId },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        };
+        cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = cameraStream;
+        video.play();
+      } catch (err) {
+        console.error("Failed to switch camera:", err);
+      }
+    }
+
+    function stopActiveCamera() {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+      }
+    }
+
+    function adjustCanvasSize() {
+      canvas.width = displayWidth;
+      canvas.height = displayHeight;
+      
+      canvas.style.aspectRatio = `${displayWidth} / ${displayHeight}`;
+      document.getElementById('videoWrapper').style.aspectRatio = `${displayWidth} / ${displayHeight}`;
+      
+      trackCanvas.width = 320;
+      trackCanvas.height = Math.round(320 * (displayHeight / displayWidth));
+    }
+
+    function togglePlay() {
+      if (isPlaying) {
+        video.pause();
+        isPlaying = false;
+      } else {
+        video.play();
+        isPlaying = true;
+      }
+      updatePlayBtnUI();
+    }
+
+    function updatePlayBtnUI() {
+      const playIcon = document.getElementById('playIcon');
+      const pauseIcon = document.getElementById('pauseIcon');
+      if (isPlaying) {
+        playIcon.classList.add('hidden');
+        pauseIcon.classList.remove('hidden');
+      } else {
+        playIcon.classList.remove('hidden');
+        pauseIcon.classList.add('hidden');
+      }
+    }
+
+    function setPlaybackRate(rate) {
+      video.playbackRate = parseFloat(rate);
+    }
+
+    function toggleOverlay() {
+      trackingActive = !trackingActive;
+      const btn = document.getElementById('toggleOverlayBtn');
+      if (trackingActive) {
+        btn.classList.add('bg-court-green');
+        btn.classList.remove('bg-gray-700/50');
+      } else {
+        btn.classList.remove('bg-court-green');
+        btn.classList.add('bg-gray-700/50');
+      }
+    }
+
+    function enableColorPicker() {
+      activeColorPicker = true;
+      document.getElementById('colorSelectPrompt').classList.remove('hidden');
+      playBeep(600, 0.1);
+    }
+
+    canvas.addEventListener('mousedown', handleCanvasMouseDown);
+    canvas.addEventListener('mousemove', handleCanvasMouseMove);
+    canvas.addEventListener('mouseup', handleCanvasMouseUp);
+
+    canvas.addEventListener('touchstart', (e) => {
+      const touch = e.touches[0];
+      const mouseEvent = new MouseEvent("mousedown", {
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      });
+      canvas.dispatchEvent(mouseEvent);
+    });
+    canvas.addEventListener('touchmove', (e) => {
+      const touch = e.touches[0];
+      const mouseEvent = new MouseEvent("mousemove", {
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      });
+      canvas.dispatchEvent(mouseEvent);
+    });
+    canvas.addEventListener('touchend', () => {
+      const mouseEvent = new MouseEvent("mouseup", {});
+      canvas.dispatchEvent(mouseEvent);
+    });
+
+    function getCanvasCoordinates(e) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      return {
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY
+      };
+    }
+
+    function handleCanvasMouseDown(e) {
+      const coords = getCanvasCoordinates(e);
+
+      if (activeColorPicker) {
+        sampleColorAt(coords.x, coords.y);
+        activeColorPicker = false;
+        document.getElementById('colorSelectPrompt').classList.add('hidden');
+        return;
+      }
+
+      if (calibMethod === 'line' && activeDrawingMode) {
+        isDrawingCalibLine = true;
+        calibLineStart = coords;
+        calibLineEnd = coords;
+      }
+    }
+
+    function handleCanvasMouseMove(e) {
+      if (isDrawingCalibLine) {
+        const coords = getCanvasCoordinates(e);
+        calibLineEnd = coords;
+      }
+    }
+
+    function handleCanvasMouseUp(e) {
+      if (isDrawingCalibLine) {
+        isDrawingCalibLine = false;
+        activeDrawingMode = false;
+        document.getElementById('calibrationOverlay').classList.add('hidden');
+        
+        const dx = calibLineEnd.x - calibLineStart.x;
+        const dy = calibLineEnd.y - calibLineStart.y;
+        calibLineLengthPixels = Math.sqrt(dx*dx + dy*dy);
+        
+        recalculateManualScale();
+        playBeep(900, 0.1);
+      }
+    }
+
+    function recalculateManualScale() {
+      if (calibLineLengthPixels && calibLineLengthPixels > 5) {
+        metersPerPixelManual = calibLineLengthMeters / calibLineLengthPixels;
+        document.getElementById('calibLinePxDisplay').innerText = `${Math.round(calibLineLengthPixels)}px (완료)`;
+      } else {
+        metersPerPixelManual = null;
+        document.getElementById('calibLinePxDisplay').innerText = "선 없음";
+      }
+    }
+
+    function sampleColorAt(x, y) {
+      trackCtx.drawImage(video, 0, 0, trackCanvas.width, trackCanvas.height);
+      const trackX = Math.round((x / canvas.width) * trackCanvas.width);
+      const trackY = Math.round((y / canvas.height) * trackCanvas.height);
+      
+      const pixel = trackCtx.getImageData(trackX, trackY, 1, 1).data;
+      const r = pixel[0];
+      const g = pixel[1];
+      const b = pixel[2];
+      const hsv = rgbToHsv(r, g, b);
+      
+      targetH = hsv.h;
+      targetS = hsv.s;
+      targetV = hsv.v;
+
+      document.getElementById('val-hue').innerText = targetH;
+      document.getElementById('val-sat').innerText = targetS;
+      document.getElementById('val-val').innerText = targetV;
+
+      updateHsvColorPreview();
+      playBeep(1200, 0.15);
+    }
+
+    // ----------------------------------------------------
+    // TRACKING ENGINE CORE
+    // ----------------------------------------------------
+    function processVideoFrame() {
+      if (!isPlaying && !isCamera) {
+        animationFrameId = requestAnimationFrame(processVideoFrame);
+        return;
+      }
+
+      const now = performance.now();
+      frameCount++;
+      if (now - lastFpsUpdateTime >= 1000) {
+        fpsDisplay.innerText = `${frameCount} FPS`;
+        frameCount = 0;
+        lastFpsUpdateTime = now;
+      }
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      if (trackingActive) {
+        trackCtx.drawImage(video, 0, 0, trackCanvas.width, trackCanvas.height);
+        const imgData = trackCtx.getImageData(0, 0, trackCanvas.width, trackCanvas.height);
+        const pixels = imgData.data;
+
+        const matchGrid = new Uint8Array(trackCanvas.width * trackCanvas.height);
+        
+        for (let i = 0; i < pixels.length; i += 4) {
+          const r = pixels[i];
+          const g = pixels[i+1];
+          const b = pixels[i+2];
+
+          const max = Math.max(r, g, b);
+          const min = Math.min(r, g, b);
+          const d = max - min;
+          let h = 0;
+          const s = max === 0 ? 0 : d / max;
+          const v = max / 255;
+
+          if (d !== 0) {
+            if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+            else if (max === g) h = (b - r) / d + 2;
+            else if (max === b) h = (r - g) / d + 4;
+            h /= 6;
+          }
+          const hueDeg = Math.round(h * 360);
+          const satPct = Math.round(s * 100);
+          const valPct = Math.round(v * 100);
+
+          let hueDiff = Math.abs(hueDeg - targetH);
+          if (hueDiff > 180) hueDiff = 360 - hueDiff;
+
+          if (hueDiff <= toleranceH && satPct >= minSat && valPct >= minValue) {
+            matchGrid[i / 4] = 1;
+          }
+        }
+
+        const visited = new Uint8Array(trackCanvas.width * trackCanvas.height);
+        const blobs = [];
+        const width = trackCanvas.width;
+        const height = trackCanvas.height;
+
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = y * width + x;
+            if (matchGrid[idx] === 1 && visited[idx] === 0) {
+              const blob = {
+                pixels: [],
+                minX: x, maxX: x,
+                minY: y, maxY: y,
+                sumX: 0, sumY: 0
+              };
+
+              const queue = [idx];
+              visited[idx] = 1;
+
+              while (queue.length > 0) {
+                const currIdx = queue.shift();
+                const cy = Math.floor(currIdx / width);
+                const cx = currIdx % width;
+
+                blob.pixels.push(currIdx);
+                blob.sumX += cx;
+                blob.sumY += cy;
+                
+                if (cx < blob.minX) blob.minX = cx;
+                if (cx > blob.maxX) blob.maxX = cx;
+                if (cy < blob.minY) blob.minY = cy;
+                if (cy > blob.maxY) blob.maxY = cy;
+
+                const neighbors = [
+                  currIdx - 1,     // Left
+                  currIdx + 1,     // Right
+                  currIdx - width, // Top
+                  currIdx + width  // Bottom
+                ];
+
+                for (const nIdx of neighbors) {
+                  if (nIdx >= 0 && nIdx < width * height) {
+                    const nx = nIdx % width;
+                    const ny = Math.floor(nIdx / width);
+                    if (Math.abs(nx - cx) <= 1 && matchGrid[nIdx] === 1 && visited[nIdx] === 0) {
+                      visited[nIdx] = 1;
+                      queue.push(nIdx);
+                    }
+                  }
+                }
+              }
+
+              const blobW = blob.maxX - blob.minX + 1;
+              const blobH = blob.maxY - blob.minY + 1;
+              const size = blob.pixels.length;
+              const density = size / (blobW * blobH);
+              const aspect = blobW / blobH;
+
+              if (size >= minArea && size <= maxArea && 
+                  density >= shapeDensity && 
+                  aspect >= 0.4 && aspect <= 2.5) {
+                
+                blobs.push({
+                  cx: blob.sumX / size,
+                  cy: blob.sumY / size,
+                  width: blobW,
+                  height: blobH,
+                  area: size,
+                  diameter: Math.max(blobW, blobH)
+                });
+              }
+            }
+          }
+        }
+
+        let bestBlob = null;
+        if (blobs.length > 0) {
+          if (lastTrackedPoint && consecutiveMissedFrames < maxMissedFrames) {
+            let minDistance = 99999;
+            let candidate = null;
+            const scaleX = trackCanvas.width / canvas.width;
+            const scaleY = trackCanvas.height / canvas.height;
+            const lastGridX = lastTrackedPoint.x * scaleX;
+            const lastGridY = lastTrackedPoint.y * scaleY;
+
+            for (const b of blobs) {
+              const dx = b.cx - lastGridX;
+              const dy = b.cy - lastGridY;
+              const dist = Math.sqrt(dx*dx + dy*dy);
+              
+              if (dist < 60 && dist < minDistance) {
+                minDistance = dist;
+                candidate = b;
+              }
+            }
+            bestBlob = candidate;
+          } else {
+            bestBlob = blobs.reduce((prev, curr) => (curr.area > prev.area ? curr : prev), blobs[0]);
+          }
+        }
+
+        const frameTime = isCamera ? (performance.now() / 1000) : video.currentTime;
+
+        if (bestBlob) {
+          consecutiveMissedFrames = 0;
+          
+          const displayX = (bestBlob.cx / trackCanvas.width) * canvas.width;
+          const displayY = (bestBlob.cy / trackCanvas.height) * canvas.height;
+          const displayDiameter = (bestBlob.diameter / trackCanvas.width) * canvas.width;
+
+          let smoothedX = displayX;
+          let smoothedY = displayY;
+
+          if (lastTrackedPoint) {
+            smoothedX = kalmanAlpha * displayX + (1 - kalmanAlpha) * lastTrackedPoint.x;
+            smoothedY = kalmanAlpha * displayY + (1 - kalmanAlpha) * lastTrackedPoint.y;
+          }
+
+          const currentPoint = {
+            x: smoothedX,
+            y: smoothedY,
+            t: frameTime,
+            d: displayDiameter,
+            v: 0
+          };
+
+          if (lastTrackedPoint) {
+            const dt = currentPoint.t - lastTrackedPoint.t;
+            
+            if (dt > 0.001 && dt < 0.5) {
+              const dx = currentPoint.x - lastTrackedPoint.x;
+              const dy = currentPoint.y - lastTrackedPoint.y;
+              const pxDistance = Math.sqrt(dx*dx + dy*dy);
+
+              let meterScale = 0;
+              
+              if (calibMethod === 'ball') {
+                const avgPxDiameter = (currentPoint.d + lastTrackedPoint.d) / 2;
+                meterScale = ballDiameterMeters / avgPxDiameter;
+              } else {
+                meterScale = metersPerPixelManual || 0.01;
+              }
+
+              const physicalDistance = pxDistance * meterScale;
+              currentPoint.v = physicalDistance / dt;
+            }
+          }
+
+          if (currentTrajectory.length === 0) {
+            currentTrajectory.push(currentPoint);
+            playBeep(880, 0.05);
+          } else {
+            if (currentPoint.v <= 75.0) {
+              currentTrajectory.push(currentPoint);
+            }
+          }
+
+          lastTrackedPoint = currentPoint;
+        } else {
+          if (lastTrackedPoint) {
+            consecutiveMissedFrames++;
+            if (consecutiveMissedFrames < maxMissedFrames) {
+              const dt = frameTime - lastTrackedPoint.t;
+              if (dt > 0 && dt < 0.5 && currentTrajectory.length > 1) {
+                const lastIdx = currentTrajectory.length - 1;
+                const p1 = currentTrajectory[lastIdx];
+                const p2 = currentTrajectory[lastIdx - 1];
+                const vdt = p1.t - p2.t;
+                if (vdt > 0) {
+                  const vx = (p1.x - p2.x) / vdt;
+                  const vy = (p1.y - p2.y) / vdt;
+
+                  const estX = p1.x + vx * dt;
+                  const estY = p1.y + vy * dt;
+
+                  const interpolatedPoint = {
+                    x: estX,
+                    y: estY,
+                    t: frameTime,
+                    d: p1.d,
+                    v: p1.v
+                  };
+
+                  currentTrajectory.push(interpolatedPoint);
+                  lastTrackedPoint = interpolatedPoint;
+                }
+              }
+            } else {
+              finalizeTrajectory();
+              lastTrackedPoint = null;
+            }
+          }
+        }
+
+        drawTrackingOverlays();
+      }
+
+      if (calibMethod === 'line' && (calibLineStart || isDrawingCalibLine)) {
+        drawCalibrationLine();
+      }
+
+      animationFrameId = requestAnimationFrame(processVideoFrame);
+    }
+
+    function drawTrackingOverlays() {
+      if (currentTrajectory.length > 1) {
+        ctx.beginPath();
+        ctx.strokeStyle = '#d4fc34';
+        ctx.lineWidth = 3;
+        ctx.lineJoin = 'round';
+        ctx.shadowColor = 'rgba(212, 252, 52, 0.8)';
+        ctx.shadowBlur = 10;
+        
+        ctx.moveTo(currentTrajectory[0].x, currentTrajectory[0].y);
+        for (let i = 1; i < currentTrajectory.length; i++) {
+          ctx.lineTo(currentTrajectory[i].x, currentTrajectory[i].y);
+        }
+        ctx.stroke();
+        
+        ctx.shadowBlur = 0;
+
+        for (let i = 0; i < currentTrajectory.length; i++) {
+          const pt = currentTrajectory[i];
+          ctx.beginPath();
+          ctx.fillStyle = i === currentTrajectory.length - 1 ? '#ffffff' : '#d4fc34';
+          ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      if (lastTrackedPoint && consecutiveMissedFrames === 0) {
+        ctx.beginPath();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.arc(lastTrackedPoint.x, lastTrackedPoint.y, lastTrackedPoint.d / 2 + 5, 0, Math.PI * 2);
+        ctx.stroke();
+
+        if (lastTrackedPoint.v > 0) {
+          const speedKmh = convertSpeed(lastTrackedPoint.v, currentSpeedUnit);
+          const txt = `${Math.round(speedKmh)} ${currentSpeedUnit === 'kmh' ? 'km/h' : currentSpeedUnit === 'mph' ? 'mph' : 'm/s'}`;
+          ctx.font = 'bold 11px sans-serif';
+          const textWidth = ctx.measureText(txt).width;
+          
+          ctx.fillStyle = 'rgba(8, 33, 21, 0.85)';
+          ctx.fillRect(lastTrackedPoint.x - textWidth/2 - 4, lastTrackedPoint.y - lastTrackedPoint.d/2 - 22, textWidth + 8, 16);
+          
+          ctx.strokeStyle = '#d4fc34';
+          ctx.strokeRect(lastTrackedPoint.x - textWidth/2 - 4, lastTrackedPoint.y - lastTrackedPoint.d/2 - 22, textWidth + 8, 16);
+          
+          ctx.fillStyle = '#d4fc34';
+          ctx.fillText(txt, lastTrackedPoint.x - textWidth/2, lastTrackedPoint.y - lastTrackedPoint.d/2 - 10);
+        }
+      }
+    }
+
+    function drawCalibrationLine() {
+      if (!calibLineStart || !calibLineEnd) return;
+      
+      ctx.beginPath();
+      ctx.strokeStyle = '#ff3b30';
+      ctx.lineWidth = 2.5;
+      ctx.moveTo(calibLineStart.x, calibLineStart.y);
+      ctx.lineTo(calibLineEnd.x, calibLineEnd.y);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.fillStyle = '#ffffff';
+      ctx.arc(calibLineStart.x, calibLineStart.y, 6, 0, Math.PI*2);
+      ctx.arc(calibLineEnd.x, calibLineEnd.y, 6, 0, Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle = '#ff3b30';
+      ctx.stroke();
+
+      const midX = (calibLineStart.x + calibLineEnd.x) / 2;
+      const midY = (calibLineStart.y + calibLineEnd.y) / 2;
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 3;
+      const labelText = `Calibration Line: ${calibLineLengthMeters}m`;
+      ctx.strokeText(labelText, midX + 10, midY);
+      ctx.fillText(labelText, midX + 10, midY);
+    }
+
+    function finalizeTrajectory() {
+      if (currentTrajectory.length < 4) {
+        currentTrajectory = [];
+        return;
+      }
+
+      const trajSpeeds = currentTrajectory.map(pt => pt.v);
+      const trajPeakSpeed = Math.max(...trajSpeeds);
+
+      if (trajPeakSpeed > 2.0) {
+        totalShotsCount++;
+        
+        const trajData = {
+          id: totalShotsCount,
+          timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          points: [...currentTrajectory],
+          peak: trajPeakSpeed
+        };
+        trajectoryHistory.push(trajData);
+        
+        if (trajPeakSpeed > peakSpeedSession) {
+          peakSpeedSession = trajPeakSpeed;
+        }
+
+        updateSpeedometerDisplay(trajPeakSpeed);
+        
+        const converted = convertSpeed(trajPeakSpeed, currentSpeedUnit);
+        const unitAnnounce = currentSpeedUnit === 'kmh' ? '킬로미터 퍼 아워' : currentSpeedUnit === 'mph' ? '마일 퍼 아워' : '미터 퍼 세컨드';
+        announceSpeed(`${Math.round(converted)} ${unitAnnounce}`);
+        
+        playBeep(900 + Math.round(converted), 0.15);
+
+        updateStatsAndHistory();
+        drawTrajectoryChart(currentTrajectory);
+      }
+
+      currentTrajectory = [];
+    }
+
+    function resetTracking() {
+      lastTrackedPoint = null;
+      consecutiveMissedFrames = 0;
+      currentTrajectory = [];
+      updateSpeedometerDisplay(0);
+      playBeep(500, 0.05);
+    }
+
+    function resetSessionStats() {
+      trajectoryHistory = [];
+      totalShotsCount = 0;
+      peakSpeedSession = 0.0;
+      
+      updateSpeedometerDisplay(0);
+      updateStatsAndHistory();
+      
+      speedChart.data.labels = [];
+      speedChart.data.datasets[0].data = [];
+      speedChart.update();
+      
+      playBeep(400, 0.1);
+    }
+
+    function updateStatsAndHistory() {
+      peakSpeedVal.innerText = formatSpeed(convertSpeed(peakSpeedSession, currentSpeedUnit));
+      peakSpeedUnit.innerText = currentSpeedUnit === 'kmh' ? 'km/h' : currentSpeedUnit === 'mph' ? 'mph' : 'm/s';
+      shotsCountVal.innerText = totalShotsCount;
+
+      historyTableBody.innerHTML = "";
+      if (trajectoryHistory.length === 0) {
+        historyTableBody.innerHTML = `<tr><td colspan="3" class="py-4 text-center text-gray-500">기록된 샷이 없습니다.</td></tr>`;
+        return;
+      }
+
+      const recent = [...trajectoryHistory].reverse().slice(0, 5);
+      recent.forEach(traj => {
+        const tr = document.createElement('tr');
+        tr.className = "border-b border-court-green/10 hover:bg-court-green/5 cursor-pointer";
+        tr.onclick = () => drawTrajectoryChart(traj.points);
+
+        const convPeak = formatSpeed(convertSpeed(traj.peak, currentSpeedUnit));
+        const unitSymbol = currentSpeedUnit === 'kmh' ? 'km/h' : currentSpeedUnit === 'mph' ? 'mph' : 'm/s';
+
+        tr.innerHTML = `
+          <td class="py-2.5 text-gray-300 font-mono">${traj.timestamp}</td>
+          <td class="py-2.5 text-right font-semibold text-court-neon font-mono">${convPeak} ${unitSymbol}</td>
+          <td class="py-2.5 text-right text-gray-400 font-mono">${traj.points.length}</td>
+        `;
+        historyTableBody.appendChild(tr);
+      });
+    }
+
+    function drawTrajectoryChart(points) {
+      if (!speedChart || points.length === 0) return;
+
+      const labels = [];
+      const data = [];
+      const t0 = points[0].t;
+
+      points.forEach(pt => {
+        const relativeTime = pt.t - t0;
+        labels.push(relativeTime.toFixed(2));
+        data.push(convertSpeed(pt.v, currentSpeedUnit).toFixed(1));
+      });
+
+      speedChart.data.labels = labels;
+      speedChart.data.datasets[0].data = data;
+      speedChart.options.scales.y.title.text = `속도 (${currentSpeedUnit === 'kmh' ? 'km/h' : currentSpeedUnit === 'mph' ? 'mph' : 'm/s'})`;
+      speedChart.update();
+    }
+
+    updateHsvColorPreview();
+    initChart();
+  </script>
+</body>
+</html>
